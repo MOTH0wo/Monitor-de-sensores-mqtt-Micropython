@@ -41,7 +41,7 @@ El ESP32 se conecta directamente a WiFi y publica al broker por MQTT estándar (
    WIFI_SSID = "tu_red"
    WIFI_PASSWORD = "tu_password"
 ```
-3. Si tu build de MicroPython no incluye `umqtt.simple`, sube manualmente la carpeta `umqtt/` con `simple.py` al dispositivo (ver [Dependencias](#dependencias)).
+3. Si tu build de MicroPython no incluye `umqtt.simple`, sube manualmente la carpeta `umqtt/` con `simple.py` al dispositivo.
 4. Copia `main.py` a la raíz del sistema de archivos del ESP32 (Thonny, `mpremote`, `ampy`, etc.).
 5. Reinicia el ESP32. Si el archivo se llama `main.py`, arranca automáticamente y comienza a publicar cada 5 segundos.
 6. Verifica en la consola serial (`print(linea)`) que las lecturas se vean correctas antes de confiar en el dashboard.
