@@ -66,7 +66,6 @@ El ESP32 se conecta directamente a WiFi y publica al broker por MQTT estándar (
 - **Puertos distintos, mismo broker:** el ESP32 usa MQTT "crudo" por el puerto 1883, mientras que el navegador necesita MQTT sobre WebSocket (puerto 8084) porque los navegadores no pueden abrir sockets TCP directos. Esto es normal y no requiere ningún puente adicional — ambos hablan con el mismo broker público.
 - **Broker público:** `broker.emqx.io` es un broker de pruebas gratuito y compartido. Cualquiera con el mismo tópico puede ver tus datos. Para un proyecto en producción o personalizado, se recomienda un broker propio o privado con autenticación.
 - **Dashboard:** Se hizo uso de la IA para realizar el dashboard con el fin de ahorrar tiempo.
-- **Sin puente serial:** a diferencia de versiones anteriores de este proyecto que usaban un script de Python en la PC (`pyserial` + `paho-mqtt`) como puente entre el ESP32 y el broker, esta versión hace que el ESP32 publique directamente — el script de puente ya no es necesario.
  
 ## Posibles mejoras
  
