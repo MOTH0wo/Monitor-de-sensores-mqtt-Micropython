@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor de Sensores</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:    #0f0f0f;
+  --paper:  #f4f1eb;
+  --cream:  #ede9e0;
+  --rule:   #c8c2b4;
+  --muted:  #8a8378;
+  --c-infra: #1a1a2e;
+  --c-gas:   #c0392b;
+  --c-ultra: #1a5276;
+  --ok:     #1e6b3c;
+  --ok-lt:  #e4f5eb;
+  --warn:   #8a5c00;
+  --warn-lt:#fff3cd;
+  --danger: #8b0000;
+  --dng-lt: #ffe0e0;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', sans-serif;
+  --display:'Bebas Neue', sans-serif;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 999;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.5;
+}
+
+.page { max-width: 1100px; margin: 0 auto; padding: 2.5rem 2rem; }
+
+/* HEADER */
+.masthead {
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: end; border-bottom: 3px solid var(--ink);
+  padding-bottom: 1rem; margin-bottom: 2rem; gap: 1rem;
+}
+.eyebrow {
+  font-family: var(--mono); font-size: .65rem;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: .35rem;
+}
+h1 {
+  font-family: var(--display);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  letter-spacing: .04em; line-height: .95;
+}
+.live-badge {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-family: var(--mono); font-size: .7rem;
+  border: 1.5px solid var(--ink);
+  padding: .3rem .7rem; border-radius: 2px;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); flex-shrink: 0;
+  transition: background .3s, box-shadow .3s;
+}
+.live-dot.on    { background: var(--ok); box-shadow: 0 0 0 3px rgba(30,107,60,.2); animation: breathe 2s infinite; }
+.live-dot.err   { background: var(--danger); }
+.live-dot.blink { background: var(--warn); animation: blk .5s infinite; }
+@keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes blk     { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* CONN BAR */
+.conn-bar {
+  background: var(--cream); border: 1.5px solid var(--rule);
+  border-radius: 4px; padding: 1rem 1.25rem; margin-bottom: 2rem;
+  display: grid; grid-template-columns: 1fr 1fr 1fr auto;
+  gap: .75rem; align-items: end;
+}
+@media(max-width:640px){ .conn-bar { grid-template-columns: 1fr 1fr; } }
+.f-group label {
+  display: block; font-family: var(--mono); font-size: .6rem;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: .35rem;
+}
+.f-group input {
+  width: 100%; background: var(--paper); border: 1.5px solid var(--rule);
+  padding: .55rem .75rem; border-radius: 3px;
+  font-family: var(--mono); font-size: .82rem; color: var(--ink);
+  transition: border-color .2s;
+}
+.f-group input:focus { outline: none; border-color: var(--ink); }
+.btn-conn {
+  font-family: var(--display); font-size: 1.1rem; letter-spacing: .08em;
+  padding: .5rem 1.4rem; border: none; border-radius: 3px;
+  background: var(--ink); color: var(--paper); cursor: pointer;
+  transition: all .15s; white-space: nowrap;
+}
+.btn-conn:hover:not(:disabled) { background: #333; transform: translateY(-1px); }
+.btn-conn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-disc {
+  background: transparent; color: var(--danger);
+  border: 1.5px solid var(--danger); font-size: .75rem;
+  font-family: var(--mono); letter-spacing: .08em;
+  padding: .4rem 1rem; margin-top: .5rem; border-radius: 3px;
+  cursor: pointer; transition: all .15s;
+}
+.btn-disc:hover { background: var(--danger); color: #fff; }
+
+/* SENSOR CARDS */
+.sensors {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.25rem; margin-bottom: 2rem;
+}
+@media(max-width:750px){ .sensors { grid-template-columns: 1fr; } }
+
+.sensor-card {
+  border: 2px solid var(--ink); border-radius: 4px;
+  overflow: hidden; transition: box-shadow .3s;
+}
+.sensor-card.lit { box-shadow: 0 6px 28px rgba(0,0,0,.15); }
+
+.card-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .65rem 1rem; border-bottom: 2px solid var(--ink);
+}
+.card-label { font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.card-num   { font-family: var(--mono); font-size: .62rem; color: var(--muted); }
+.card-body  { padding: 1.1rem 1.1rem .8rem; }
+
+.big-value {
+  font-family: var(--display);
+  font-size: clamp(3rem, 6vw, 5.5rem);
+  line-height: 1; letter-spacing: .02em; transition: color .3s;
+}
+.infra-val { color: var(--c-infra); }
+.gas-val   { color: var(--c-gas); }
+.ultra-val { color: var(--c-ultra); }
+
+.val-unit {
+  font-family: var(--mono); font-size: .68rem; color: var(--muted);
+  margin-top: .2rem; text-transform: uppercase; letter-spacing: .1em;
+}
+
+.status-pill {
+  display: inline-block; font-family: var(--mono); font-size: .7rem;
+  font-weight: 500; letter-spacing: .05em; padding: .28rem .75rem;
+  border-radius: 2px; margin-top: .8rem; text-transform: uppercase; transition: all .3s;
+}
+.st-idle   { background: var(--cream); color: var(--muted); border: 1px solid var(--rule); }
+.st-ok     { background: var(--ok-lt); color: var(--ok); border: 1px solid #a8d9bc; }
+.st-warn   { background: var(--warn-lt); color: var(--warn); border: 1px solid #f0d080; }
+.st-danger { background: var(--dng-lt); color: var(--danger); border: 1px solid #f4aaaa; animation: flashpill .6s infinite; }
+@keyframes flashpill { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+.card-foot {
+  display: flex; justify-content: space-between;
+  padding: .45rem 1rem; border-top: 1.5px solid var(--rule); background: var(--cream);
+}
+.foot-item { font-family: var(--mono); font-size: .6rem; color: var(--muted); }
+
+/* CHARTS */
+.section-rule {
+  display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem;
+}
+.section-rule span {
+  font-family: var(--mono); font-size: .62rem; text-transform: uppercase;
+  letter-spacing: .15em; color: var(--muted); white-space: nowrap;
+}
+.section-rule::before, .section-rule::after { content: ''; flex: 1; height: 1.5px; background: var(--rule); }
+
+.charts-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 1.25rem; margin-bottom: 2rem;
+}
+@media(max-width:700px){ .charts-grid { grid-template-columns: 1fr; } }
+
+.chart-box { border: 2px solid var(--ink); border-radius: 4px; overflow: hidden; }
+.chart-box.full { grid-column: 1 / -1; }
+.chart-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .55rem 1rem; border-bottom: 2px solid var(--ink); background: var(--cream);
+}
+.chart-lbl { font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.chart-val { font-family: var(--mono); font-size: .62rem; color: var(--muted); }
+.chart-body { padding: 1rem; background: var(--paper); height: 180px; }
+
+/* LOG */
+.log-box { border: 2px solid var(--ink); border-radius: 4px; overflow: hidden; }
+.log-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .55rem 1rem; background: var(--ink); color: var(--paper);
+}
+.log-head-txt { font-family: var(--mono); font-size: .65rem; letter-spacing: .12em; text-transform: uppercase; }
+.log-clr {
+  background: none; border: none; color: var(--muted);
+  font-family: var(--mono); font-size: .65rem; cursor: pointer;
+  letter-spacing: .08em; text-transform: uppercase; transition: color .2s;
+}
+.log-clr:hover { color: var(--paper); }
+.log-body { background: var(--paper); max-height: 200px; overflow-y: auto; padding: .5rem; }
+.log-body::-webkit-scrollbar { width: 4px; }
+.log-body::-webkit-scrollbar-thumb { background: var(--rule); }
+
+.log-row {
+  display: grid; grid-template-columns: 65px 200px 1fr;
+  gap: .5rem; padding: .28rem .4rem; border-radius: 2px;
+  font-family: var(--mono); font-size: .7rem;
+  animation: fadeRow .25s ease;
+}
+@keyframes fadeRow { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+.log-row:hover { background: var(--cream); }
+.log-ts    { color: var(--muted); }
+.log-topic.infrarojo   { color: var(--c-infra); font-weight: 500; }
+.log-topic.gas         { color: var(--c-gas);   font-weight: 500; }
+.log-topic.ultrasonico { color: var(--c-ultra); font-weight: 500; }
+.log-data  { color: var(--ink); word-break: break-all; }
+.log-empty { font-family: var(--mono); font-size: .72rem; color: var(--muted); padding: .75rem .4rem; }
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 1.5rem; left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--ink); color: var(--paper);
+  font-family: var(--mono); font-size: .78rem;
+  padding: .75rem 1.5rem; border-radius: 3px;
+  opacity: 0; transition: all .3s; z-index: 998; white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.toast.good { background: var(--ok); }
+.toast.bad  { background: var(--danger); }
+
+@keyframes flash { 0%,100%{opacity:1} 40%{opacity:.1} }
+.flash { animation: flash .35s ease; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">ESP32 · Serial → MQTT · Tres Sensores</div>
+      <h1>Monitor<br>de Sensores</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="live-badge">
+        <div class="live-dot" id="liveDot"></div>
+        <span id="liveText">Offline</span>
+      </div>
+      <div id="discRow" style="display:none; margin-top:.5rem;">
+        <button class="btn-disc" onclick="desconectar()">✕ Desconectar</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONN BAR -->
+  <div class="conn-bar" id="connBar">
+    <div class="f-group">
+      <label>Broker Host</label>
+      <input id="inHost" value="broker.emqx.io">
+    </div>
+    <div class="f-group">
+      <label>Puerto WS</label>
+      <input id="inPort" value="8084" type="number">
+    </div>
+    <div class="f-group">
+      <label>Client ID</label>
+      <input id="inClient" placeholder="Auto">
+    </div>
+    <button class="btn-conn" id="btnConn" onclick="conectar()">Conectar</button>
+  </div>
+
+  <!-- SENSOR CARDS -->
+  <div class="sensors">
+
+    <div class="sensor-card" id="cardInfrarojo">
+      <div class="card-top">
+        <span class="card-label">Infrarrojo · Presencia</span>
+        <span class="card-num" id="cntInfrarojo">0 muestras</span>
+      </div>
+      <div class="card-body">
+        <div class="big-value infra-val" id="valInfrarojo">—</div>
+        <div class="val-unit">detección</div>
+        <div><span class="status-pill st-idle" id="stInfrarojo">Sin datos</span></div>
+      </div>
+      <div class="card-foot">
+        <span class="foot-item">iot/sensor/infrarojo</span>
+        <span class="foot-item" id="timeInfrarojo">—</span>
+      </div>
+    </div>
+
+    <div class="sensor-card" id="cardGas">
+      <div class="card-top">
+        <span class="card-label">Gas · MQ-2/MQ-5</span>
+        <span class="card-num" id="cntGas">0 muestras</span>
+      </div>
+      <div class="card-body">
+        <div class="big-value gas-val" id="valGas">—</div>
+        <div class="val-unit">ADC raw 0 – 4095</div>
+        <div><span class="status-pill st-idle" id="stGas">Sin datos</span></div>
+      </div>
+      <div class="card-foot">
+        <span class="foot-item">iot/sensor/gas</span>
+        <span class="foot-item" id="timeGas">—</span>
+      </div>
+    </div>
+
+    <div class="sensor-card" id="cardUltra">
+      <div class="card-top">
+        <span class="card-label">Ultrasónico · Distancia</span>
+        <span class="card-num" id="cntUltra">0 muestras</span>
+      </div>
+      <div class="card-body">
+        <div class="big-value ultra-val" id="valUltra">—</div>
+        <div class="val-unit">centímetros</div>
+        <div><span class="status-pill st-idle" id="stUltra">Sin datos</span></div>
+      </div>
+      <div class="card-foot">
+        <span class="foot-item">iot/sensor/ultrasonico</span>
+        <span class="foot-item" id="timeUltra">—</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CHARTS -->
+  <div class="section-rule"><span>Gráficas en tiempo real</span></div>
+  <div class="charts-grid">
+
+    <div class="chart-box">
+      <div class="chart-head">
+        <span class="chart-lbl">Gas · ADC Raw</span>
+        <span class="chart-val" id="lblGas">—</span>
+      </div>
+      <div class="chart-body"><canvas id="chartGas"></canvas></div>
+    </div>
+
+    <div class="chart-box">
+      <div class="chart-head">
+        <span class="chart-lbl">Distancia · cm</span>
+        <span class="chart-val" id="lblUltra">—</span>
+      </div>
+      <div class="chart-body"><canvas id="chartUltra"></canvas></div>
+    </div>
+
+    <div class="chart-box full">
+      <div class="chart-head">
+        <span class="chart-lbl">Infrarrojo · 1 = Detectado · 0 = Libre</span>
+        <span class="chart-val" id="lblInfra">—</span>
+      </div>
+      <div class="chart-body"><canvas id="chartInfra"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- LOG -->
+  <div class="section-rule"><span>Log de mensajes MQTT</span></div>
+  <div class="log-box">
+    <div class="log-head">
+      <span class="log-head-txt">↓ Mensajes recibidos</span>
+      <button class="log-clr" onclick="clearLog()">Limpiar</button>
+    </div>
+    <div class="log-body" id="logBody">
+      <div class="log-empty">Esperando conexión...</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toastEl"></div>
+
+<script>
+const TOPICS = {
+  "iot/sensor/infrarojo":   "infrarojo",
+  "iot/sensor/gas":         "gas",
+  "iot/sensor/ultrasonico": "ultrasonico"
+};
+
+let mqttClient = null, connected = false;
+const counts = { infrarojo: 0, gas: 0, ultrasonico: 0 };
+const MAX_PTS = 30;
+
+/* ── CHARTS ── */
+const chartOpts = (yMin, yMax) => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 400 },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#0f0f0f',
+      titleFont: { family: 'IBM Plex Mono', size: 11 },
+      bodyFont:  { family: 'IBM Plex Mono', size: 11 },
+      padding: 8
+    }
+  },
+  scales: {
+    x: {
+      grid: { color: '#c8c2b4', lineWidth: .5 },
+      ticks: { font: { family: 'IBM Plex Mono', size: 9 }, color: '#8a8378', maxTicksLimit: 8 }
+    },
+    y: {
+      min: yMin, max: yMax,
+      grid: { color: '#c8c2b4', lineWidth: .5 },
+      ticks: { font: { family: 'IBM Plex Mono', size: 9 }, color: '#8a8378' }
+    }
+  }
+});
+
+function makeChart(id, color, yMin, yMax) {
+  return new Chart(document.getElementById(id).getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [], borderColor: color,
+        backgroundColor: color + '18',
+        borderWidth: 2, pointRadius: 3,
+        pointBackgroundColor: color,
+        fill: true, tension: 0.3
+      }]
+    },
+    options: chartOpts(yMin, yMax)
+  });
+}
+
+const charts = {
+  gas:         makeChart('chartGas',   '#c0392b', 0,    4095),
+  ultrasonico: makeChart('chartUltra', '#1a5276', 0,    400),
+  infrarojo:   makeChart('chartInfra', '#1a1a2e', -0.1, 1.1)
+};
+
+function pushChart(type, val, ts) {
+  const c = charts[type];
+  c.data.labels.push(ts);
+  c.data.datasets[0].data.push(val);
+  if (c.data.labels.length > MAX_PTS) {
+    c.data.labels.shift();
+    c.data.datasets[0].data.shift();
+  }
+  c.update('none');
+}
+
+/* ── CONNECT ── */
+function conectar() {
+  const host = document.getElementById('inHost').value.trim();
+  const port = parseInt(document.getElementById('inPort').value, 10);
+  const cid  = document.getElementById('inClient').value.trim()
+               || 'dash_' + Math.random().toString(16).slice(2, 8);
+
+  setDot('blink'); setLive('Conectando…');
+  document.getElementById('btnConn').disabled = true;
+
+  try {
+    mqttClient = new Paho.MQTT.Client(host, port, cid);
+    mqttClient.onConnectionLost = (r) => {
+      connected = false; setDot(''); setLive('Offline');
+      showConn(); toast('Conexión perdida: ' + r.errorMessage, 'bad');
+    };
+    mqttClient.onMessageArrived = (msg) => onMessage(msg.destinationName, msg.payloadString);
+
+    const ssl = (port === 8084 || port === 443 || port === 8883);
+    mqttClient.connect({
+      useSSL: ssl, timeout: 10, keepAliveInterval: 30,
+      onSuccess() {
+        connected = true; setDot('on'); setLive('En línea · ' + host);
+        hideConn();
+        Object.keys(TOPICS).forEach(t => mqttClient.subscribe(t, { qos: 1 }));
+        toast('Conectado a ' + host + ':' + port, 'good');
+        clearLogPlaceholder();
+      },
+      onFailure(e) {
+        setDot('err'); setLive('Error');
+        document.getElementById('btnConn').disabled = false;
+        toast('Error: ' + e.errorMessage, 'bad');
+      }
+    });
+  } catch(e) {
+    setDot('err'); setLive('Error');
+    document.getElementById('btnConn').disabled = false;
+    toast('Excepción: ' + e.message, 'bad');
+  }
+}
+
+function desconectar() {
+  if (mqttClient && connected) mqttClient.disconnect();
+  connected = false; mqttClient = null;
+  setDot(''); setLive('Offline'); showConn(); toast('Desconectado', '');
+}
+
+/* ── MESSAGE HANDLER ── */
+function onMessage(topic, payload) {
+  const type = TOPICS[topic];
+  if (!type) return;
+
+  let d;
+  try { d = JSON.parse(payload); } catch { d = { valor: payload, estado: '?' }; }
+
+  counts[type]++;
+  const ts = new Date().toLocaleTimeString('es-MX');
+
+  if (type === 'infrarojo') {
+    const v = d.valor ?? 0;
+    updateCard('Infrarojo', v ? 'Libre' : 'Detectado', d.estado, ts, type);
+    pushChart('infrarojo', v ? 0 : 1, ts);  // 0=detectado, 1=libre → invertido para gráfica
+    document.getElementById('lblInfra').textContent = v ? '1 · Libre' : '0 · Detectado';
+
+  } else if (type === 'gas') {
+    updateCard('Gas', String(d.valor ?? '—'), d.estado, ts, type);
+    pushChart('gas', parseFloat(d.valor) || 0, ts);
+    document.getElementById('lblGas').textContent = (d.valor ?? '—') + ' ADC';
+
+  } else if (type === 'ultrasonico') {
+    updateCard('Ultra', (d.valor ?? '—') + ' cm', d.estado, ts, type);
+    pushChart('ultrasonico', parseFloat(d.valor) || 0, ts);
+    document.getElementById('lblUltra').textContent = (d.valor ?? '—') + ' cm';
+  }
+
+  addLog(topic, payload, type, ts);
+}
+
+/* ── UPDATE CARD ── */
+function updateCard(sfx, displayVal, estado, ts, type) {
+  const vEl = document.getElementById('val' + sfx);
+  vEl.textContent = displayVal;
+  vEl.classList.remove('flash'); void vEl.offsetWidth; vEl.classList.add('flash');
+
+  const sEl = document.getElementById('st' + sfx);
+  sEl.textContent = estado || '—';
+  sEl.className = 'status-pill';
+  const e = (estado || '').toLowerCase();
+  if      (e.includes('normal') || e.includes('sin mov') || e === 'ok' || e === 'libre') sEl.classList.add('st-ok');
+  else if (e.includes('precauc') || e.includes('persona') || e.includes('detectad'))     sEl.classList.add('st-warn');
+  else if (e.includes('peligro') || e.includes('error'))                                  sEl.classList.add('st-danger');
+  else                                                                                     sEl.classList.add('st-ok');
+
+  document.getElementById('card' + sfx).classList.add('lit');
+  document.getElementById('time' + sfx).textContent = ts;
+  document.getElementById('cnt'  + sfx).textContent = counts[type] + ' muestras';
+}
+
+/* ── LOG ── */
+function clearLogPlaceholder() {
+  const lb = document.getElementById('logBody');
+  if (lb.querySelector('.log-empty')) lb.innerHTML = '';
+}
+function addLog(topic, payload, type, ts) {
+  clearLogPlaceholder();
+  const lb  = document.getElementById('logBody');
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML =
+    '<span class="log-ts">'              + ts             + '</span>' +
+    '<span class="log-topic ' + type + '">' + esc(topic) + '</span>' +
+    '<span class="log-data">'            + esc(payload)   + '</span>';
+  lb.insertBefore(row, lb.firstChild);
+  while (lb.children.length > 120) lb.removeChild(lb.lastChild);
+}
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '<div class="log-empty">Log limpiado.</div>';
+}
+
+/* ── UI HELPERS ── */
+function setDot(cls) {
+  document.getElementById('liveDot').className = 'live-dot' + (cls ? ' ' + cls : '');
+}
+function setLive(t) { document.getElementById('liveText').textContent = t; }
+function hideConn() {
+  document.getElementById('connBar').style.display = 'none';
+  document.getElementById('discRow').style.display = 'block';
+}
+function showConn() {
+  document.getElementById('connBar').style.display = 'grid';
+  document.getElementById('discRow').style.display = 'none';
+  document.getElementById('btnConn').disabled = false;
+}
+function toast(msg, type) {
+  const el = document.getElementById('toastEl');
+  el.textContent = msg;
+  el.className = 'toast' + (type ? ' ' + type : '') + ' show';
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+window.addEventListener('beforeunload', () => { if (mqttClient && connected) mqttClient.disconnect(); });
+</script>
+</body>
+</html>
