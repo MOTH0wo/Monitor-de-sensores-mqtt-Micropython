@@ -1,0 +1,49 @@
+# requirements.txt — Monitor de Sensores (ESP32 + Dashboard MQTT)
+#
+# NOTA IMPORTANTE:
+# Este proyecto tiene dos partes que corren en entornos distintos:
+#   1. main.py       -> corre en MicroPython, dentro del ESP32 (NO usa pip)
+#   2. dashboard.html -> corre en el navegador, carga sus librerías vía CDN (NO usa pip)
+#
+# Por eso este archivo NO se instala con "pip install -r requirements.txt";
+# es solo documentación de qué necesita cada parte del proyecto.
+
+# ESP32 / MicroPython (main.py)
+# Firmware requerido:
+#   MicroPython >= 1.20 (o la versión estable más reciente para tu placa)
+#   Descarga: https://micropython.org/download/
+#
+# Librería externa requerida (copiar manualmente al dispositivo, NO vía pip):
+#   umqtt.simple — cliente MQTT ligero para MicroPython
+#   Fuente oficial: https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple
+#
+# Módulos incluidos en el firmware (no requieren instalación):
+#   machine, network, time, ujson
+#
+# 
+# Dashboard web (dashboard.html)
+# 
+# No requiere instalación: se abre directamente en el navegador.
+# Las siguientes librerías se cargan automáticamente desde CDN dentro del HTML:
+#
+#   Paho MQTT (JavaScript)  v1.0.1
+#     https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js
+#
+#   Chart.js  v4.4.1
+#     https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js
+#
+#   Google Fonts (Bebas Neue, IBM Plex Mono, IBM Plex Sans)
+#     https://fonts.googleapis.com/css2?family=...
+#
+# Requiere conexión a internet la primera vez que se abre (para cargar el CDN)
+# y acceso al puerto WebSocket del broker MQTT (por defecto 8084 en broker.emqx.io).
+
+# Herramientas opcionales para desarrollo en la PC (estas SÍ se instalan con pip)
+# 
+# Útiles si quieres subir archivos al ESP32 desde tu computadora.
+# Descomenta la que prefieras usar:
+
+# adafruit-ampy==1.1.0       # subir/bajar archivos vía USB serial
+# mpremote==1.22.0           # herramienta oficial de MicroPython para REPL y transferencia de archivos
+# rshell==0.0.31             # shell remoto para manejar el sistema de archivos del dispositivo
+# thonny==4.1.4              # IDE gráfico con soporte nativo para MicroPython
